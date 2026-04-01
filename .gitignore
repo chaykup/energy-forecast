@@ -1,0 +1,6 @@
+.env
+supabase-frontend-dev-guide.md
+energy-forecast-dev-guide.md
+venv
+__pycache__
+data/raw
