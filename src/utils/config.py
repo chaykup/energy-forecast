@@ -17,6 +17,8 @@ load_dotenv()
 EIA_API_KEY = os.getenv("EIA_API_KEY")
 FRED_API_KEY = os.getenv("FRED_API_KEY")
 NIXTLA_API_KEY = os.getenv("NIXTLA_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 # ---------------------------------------------------------------------------
 # Project paths
