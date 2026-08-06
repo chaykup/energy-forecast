@@ -151,8 +151,27 @@ class FeatureEngineer:
         if "SUN_mwh" in df.columns and "demand" in df.columns:
             df["solar_penetration"] = df["SUN_mwh"] / df["demand"].clip(lower=1)
 
+        if "WND_mwh" in df.columns and "demand" in df.columns:
+            df["wind_penetration"] = df["WND_mwh"] / df["demand"].clip(lower=1)
+
         if all(c in df.columns for c in ["demand", "SUN_mwh", "WND_mwh"]):
             df["net_load"] = df["demand"] - df["SUN_mwh"] - df["WND_mwh"]
+
+        # ── Negative-price regime features ───────────────────────────────
+        # net_load_lag_24h: same-hour-yesterday supply conditions (key signal
+        # for recurring solar/wind oversupply that drives negative prices)
+        if "net_load" in df.columns:
+            df["net_load_lag_24h"] = df.groupby("Location")["net_load"].shift(24)
+            df["net_load_lag_168h"] = df.groupby("Location")["net_load"].shift(168)
+
+        # is_negative_lmp_recent: 1 if any of the past 3 hourly LMPs were
+        # negative — flags that we are inside an active negative-price cluster
+        if "lmp_lag_1h" in df.columns:
+            df["is_negative_lmp_recent"] = (
+                (df["lmp_lag_1h"] < 0)
+                | (df["lmp_lag_2h"] < 0)
+                | (df["lmp_lag_3h"] < 0)
+            ).astype(int)
 
         # ── Drop NaN rows from lagging (first ~168 rows per location) ────
         before = len(df)

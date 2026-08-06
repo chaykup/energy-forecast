@@ -98,21 +98,84 @@ def negative_price_accuracy(
     return float(correctly_low.mean())
 
 
+def wmape(actual: np.ndarray, predicted: np.ndarray) -> float:
+    """
+    Weighted Mean Absolute Percentage Error.
+    sum(|actual - predicted|) / sum(|actual|)
+    Handles near-zero and negative LMPs correctly unlike standard MAPE.
+    """
+    denom = np.sum(np.abs(actual))
+    if denom == 0:
+        return float("nan")
+    return float(np.sum(np.abs(actual - predicted)) / denom)
+
+
+def skill_score(model_metric: float, naive_metric: float) -> float:
+    """
+    Skill score relative to naive baseline.
+    1 - (model_metric / naive_metric)
+    0.0 = same as naive, positive = better, negative = worse than naive.
+    """
+    if naive_metric == 0:
+        return float("nan")
+    return float(1.0 - model_metric / naive_metric)
+
+
+def arbitrage_capture_pct(
+    actual: np.ndarray,
+    predicted: np.ndarray,
+    timestamps: pd.DatetimeIndex,
+) -> float:
+    """
+    Simulated daily battery arbitrage capture percentage.
+
+    For each calendar day in the test set:
+      - Perfect foresight spread = max(actual) - min(actual)
+      - Model charges at argmin(predicted), discharges at argmax(predicted)
+      - Captured spread = actual[discharge_hour] - actual[charge_hour]
+      - Day pct = max(0, captured / perfect * 100)
+
+    Returns mean across all days with >= 24 hours of data.
+    Negative captures (model got direction wrong) are clamped to 0.
+    """
+    df = pd.DataFrame({
+        "actual": actual,
+        "predicted": predicted,
+        "date": pd.DatetimeIndex(timestamps).normalize(),
+    })
+    daily = []
+    for _, day in df.groupby("date"):
+        if len(day) < 24:
+            continue
+        a = day["actual"].values
+        p = day["predicted"].values
+        perfect = float(a.max() - a.min())
+        if perfect <= 0:
+            continue
+        captured = float(a[int(p.argmax())] - a[int(p.argmin())])
+        daily.append(max(0.0, captured / perfect * 100))
+    if not daily:
+        return float("nan")
+    return float(np.mean(daily))
+
+
 def compute_all_metrics(
     actual: np.ndarray,
     predicted: np.ndarray,
     model_name: str = "",
     market: str = "",
+    timestamps: Optional[pd.DatetimeIndex] = None,
 ) -> dict:
     """
     Compute the full metrics suite from Phase 4.2.
     Returns a flat dict suitable for JSON serialization or DataFrame row.
     """
-    return {
+    result = {
         "model": model_name,
         "market": market,
         "rmse": rmse(actual, predicted),
         "mae": mae(actual, predicted),
+        "wmape": wmape(actual, predicted),
         "median_ae": median_ae(actual, predicted),
         "max_error": max_error(actual, predicted),
         "mape": mape(actual, predicted),
@@ -125,6 +188,9 @@ def compute_all_metrics(
         "mean_predicted": float(np.mean(predicted)),
         "std_predicted": float(np.std(predicted)),
     }
+    if timestamps is not None:
+        result["arbitrage_capture_pct"] = arbitrage_capture_pct(actual, predicted, timestamps)
+    return result
 
 
 def compute_regime_metrics(

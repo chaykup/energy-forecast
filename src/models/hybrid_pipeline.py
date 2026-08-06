@@ -46,12 +46,26 @@ class HybridPipeline:
             self.xgb_models[regime_id] = xgb_model
 
         # Train per-regime LSTM on residuals
+        # Compute residuals per-node separately and concatenate — avoids mixing
+        # NP15/SP15/ZP26 (or ERCOT hubs) into one interleaved sequence, which
+        # would cause the LSTM to predict the next node's residual rather than
+        # the next time step's residual for the same node.
         print("\nTraining regime-conditional LSTM residual models...")
         for regime_id in range(self.n_regimes):
             print(f"    Training LSTM for regime {regime_id}...")
-            residuals = self.xgb_models[regime_id].get_residuals(df_aligned, states)
+            if "Location" in df_aligned.columns:
+                per_node = []
+                for loc in df_aligned["Location"].unique():
+                    loc_df = df_aligned[df_aligned["Location"] == loc]
+                    loc_states = loc_df["regime"].values
+                    per_node.append(
+                        self.xgb_models[regime_id].get_residuals(loc_df, loc_states).values
+                    )
+                residuals = np.concatenate(per_node)
+            else:
+                residuals = self.xgb_models[regime_id].get_residuals(df_aligned, states).values
             lstm_model = RegimeLSTM(regime_id=regime_id, market=self.market)
-            lstm_model.fit(residuals.values)
+            lstm_model.fit(residuals)
             self.lstm_models[regime_id] = lstm_model
         
         print(f"\nTraining complete for {self.market}.")
@@ -68,12 +82,22 @@ class HybridPipeline:
         xgb_pred = self.xgb_models[current_regime].predict(df.iloc[[-1]])[0]
 
         # Get LSTM residual correction
-        residuals = self.xgb_models[current_regime].get_residuals(
-            df, self.regime_detector.model.predict(
-                self.regime_detector.prepare_observations(df)
-            )
+        # Exclude the current row so the LSTM predicts the correction FOR it,
+        # not for the row after it. Also filter to the current node so the LSTM
+        # receives a single-node temporal sequence matching what it was trained on,
+        # rather than an interleaved multi-node sequence.
+        past_df = df.iloc[:-1]
+        if "Location" in df.columns:
+            past_df = past_df[past_df["Location"] == df["Location"].iloc[-1]]
+        past_states = self.regime_detector.model.predict(
+            self.regime_detector.prepare_observations(past_df)
         )
-        lstm_correction = self.lstm_models[current_regime].predict(residuals.values)
+        residuals = self.xgb_models[current_regime].get_residuals(past_df, past_states)
+        # If context has no regime-filtered rows, skip LSTM (use XGBoost alone)
+        lstm_correction = (
+            self.lstm_models[current_regime].predict(residuals.values)
+            if len(residuals) > 0 else 0.0
+        )
 
         # Final forecast
         forecast_lmp = xgb_pred + lstm_correction

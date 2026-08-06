@@ -406,6 +406,7 @@ def _predict_hybrid_on_test(
             preds.append(result["forecast_lmp"])
             states.append(result["current_regime"])
         except Exception as e:
+            print(f"    [hybrid warn] row {i}: {e}")
             preds.append(context["LMP"].iloc[-2] if len(context) > 1 else 0.0)
             states.append(-1)
 

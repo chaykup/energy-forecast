@@ -61,7 +61,7 @@ class RegimeLSTM:
         # Normalize residuals
         self.residual_mean = residuals.mean()
         self.residual_std = residuals.std() + 1e-8
-        normed = (residuals - self.residual_mean / self.residual_std)
+        normed = (residuals - self.residual_mean) / self.residual_std
 
         dataset = ResidualDataset(normed, self.seq_len)
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)

@@ -4,3 +4,5 @@ energy-forecast-dev-guide.md
 venv
 __pycache__
 data/raw
+.claude/settings.local.json
+claude_code_prompt.md

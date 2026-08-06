@@ -46,6 +46,8 @@ class RegimeXGBoost:
     
     # Compute residuals for LSTM training
     def get_residuals(self, df: pd.DataFrame, regime_states: np.ndarray) -> pd.Series:
+        # HMM drops leading rows (pct_change + rolling std), so align df to states
+        df = df.iloc[-len(regime_states):]
         mask = regime_states == self.regime_id
         regime_df = df[mask]
         preds = self.predict(regime_df)
